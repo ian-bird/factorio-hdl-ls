@@ -1,8 +1,9 @@
 (ns blueprint-serialization
   (:require
+   [cheshire.core :as chess]
    [clojure.data.codec.base64 :as b64]
    [clojure.string :as str]
-   [cheshire.core :as chess]))
+   [clojure.walk :as walk]))
 
 (import '[java.io ByteArrayOutputStream ByteArrayInputStream]
         '[java.util.zip InflaterInputStream]
@@ -52,4 +53,5 @@
       b64/decode
       inflate-bytes
       String.
-      chess/parse-string))
+      chess/parse-string
+      walk/keywordize-keys))
