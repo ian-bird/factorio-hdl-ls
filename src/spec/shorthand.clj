@@ -11,7 +11,7 @@
   [x]
   (last ((requiring-resolve 'clojure.string/split) (str x) #"/")))
 
- (defmacro do-specdef 
+ (defmacro do-specdef
   [name structure]
   (let [vec-kw (coerce-qualified-kw (gensym (str (unqualify name) "-vec")))]
     (cond
@@ -38,11 +38,17 @@
       (map? structure)
         (let [kws (into {}
                         (map (fn [[k _]] [k (coerce-qualified-kw k)])
-                          structure))]
+                          structure))
+              x (gensym "x")]
           `(do ~@(map (fn [[k v]] `(spec.shorthand/do-specdef ~(kws k) ~v))
                    structure)
                (clojure.spec.alpha/def ~(coerce-qualified-kw name)
-                 (clojure.spec.alpha/keys :req-un [~@(vals kws)]))))
+                 (fn [~x]
+                   (and (clojure.spec.alpha/valid?
+                          (clojure.spec.alpha/keys :req-un [~@(vals kws)])
+                          ~x)
+                        (= (set (map #(coerce-qualified-kw %) (keys ~x)))
+                           (set [~@(vals kws)])))))))
       ; a list means we're doing a spec combination function like or,
       ; so create the manual validation code and then create the specs
       ; for all the patterns in the body of the list.
