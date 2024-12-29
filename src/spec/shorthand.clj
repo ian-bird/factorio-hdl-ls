@@ -86,7 +86,7 @@
   [name structure]
   (let [specs ((fn flatten-dos [x]
                  (if (= (first x) 'do)
-                   (concat (flatten-dos (second x)) (drop 2 x))
+                   (mapcat flatten-dos (rest x))
                    [x]))
                (expand-specific-macro 'do-specdef
                                       `(do-specdef ~name ~structure)))
