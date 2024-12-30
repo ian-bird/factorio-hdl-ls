@@ -40,7 +40,7 @@
                    (and (clojure.spec.alpha/valid?
                           (clojure.spec.alpha/keys :req-un [~@(vals kws)])
                           ~x)
-                        (= (set (map #(coerce-qualified-kw %) (keys ~x)))
+                        (= (set (map #(km/coerce-qualified-kw %) (keys ~x)))
                            (set [~@(vals kws)])))))))
       ; a list means we're doing a spec combination function like or
       ; or that we're inserting forms from elsewhere.

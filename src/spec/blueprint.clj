@@ -1,5 +1,6 @@
 (ns spec.blueprint
-  (:require 
+  (:require
+   [clojure.spec.alpha :as s]
    [spec.shorthand :as shorthand]))
 
 (defn signal [] '(or {:name string?} {:type string? :name string?}))
@@ -10,15 +11,29 @@
   {:icons [{:signal (signal) :index pos-int?} +]
    :entities [(or {:entity_number pos-int?
                    :name string?
-                   :position {:x number? :y number?}}
+                   :position {:x number? :y number?}
+                   :direction int?}
                   {:entity_number pos-int?
                    :name string?
                    :position {:x int? :y int?}
+                   :direction int?
                    :control_behavior
-                   (or {:arithmetic_conditions {:first_signal (signal)
-                                                :second_signal (signal)
-                                                :operation string?
-                                                :output_signal (signal)}}
+                   (or {:arithmetic_conditions (or {:first_signal (signal)
+                                                    :second_signal (signal)
+                                                    :operation string?
+                                                    :output_signal (signal)}
+                                                   {:first_signal (signal)
+                                                    :second_constant int?
+                                                    :operation string?
+                                                    :output_signal (signal)}
+                                                   {:first_constant int?
+                                                    :second_signal (signal)
+                                                    :operation string?
+                                                    :output_signal (signal)}
+                                                   {:first_constant int?
+                                                    :second_constant int?
+                                                    :operation string?
+                                                    :output_signal (signal)})}
                        {:decider_conditions
                         {:conditions [(or {:first_signal (signal)
                                            :second_signal (signal)
