@@ -45,50 +45,61 @@
    '<= 'fc<=
    'def 'fc-def
    'cond 'fc-cond
-   'fn 'fc-fn})
+   'fn 'fc-fn
+   'assoc 'fc-assoc})
 
-(eval-with-tac-append (map #(symbol (apply str (drop 2 ( str %)))) (vals op-map)))
+(eval-with-tac-append (map #(symbol (apply str (drop 2 (str %))))
+                           (vals op-map)))
 
 (defmacro fc-def [name body]
   `(def ~name ~(walk/prewalk-replace op-map body)))
 
 (defmacro fc-cond
-  [& conditions ]
-  ; all the conditions are already reduced
-  ; all we need to do is tie them up
+  [& conditions]
+  ; all the conditions are already reduced. all we need to do is tie them
+  ; up.
   (let [evaled-conditions (->> conditions
                                (partition 2 2)
                                (mapcat reverse)
-                               (map eval)) 
+                               (map eval))
         antecent->consequent (->> evaled-conditions
                                   (partition 2 2)
                                   (mapcat reverse)
                                   (apply hash-map))
         output (gensym)
         new-tac (mapv (fn [ts]
-                       ; looking for tac statements
-                       ; that have outputs matching
-                       ; our antecedents
-                       ;
-                       ; when we find them we need to replace
-                       ; these with our output wire, and
-                       ; insert the consequent output as
-                       ; the pass-through.
-                       (if (and (= 4 (count ts))
-                                (contains? antecent->consequent (last ts)))
-                         (let [tsv (vec ts)]
-                           (list (tsv 0)
-                                 (tsv 1)
-                                 (tsv 2)
-                                 (antecent->consequent (last ts))
-                                 output))
-                         ts))
-                     *tac-statements*)]
+                        ; looking for tac statements that have outputs
+                        ; matching our antecedents
+                        ;
+                        ; when we find them we need to replace these with
+                        ; our output wire, and insert the consequent output
+                        ; as the pass-through.
+                        (if (and (= 4 (count ts))
+                                 (contains? antecent->consequent (last ts)))
+                          (let [tsv (vec ts)]
+                            (list (tsv 0)
+                                  (tsv 1)
+                                  (tsv 2)
+                                  (antecent->consequent (last ts))
+                                  output))
+                          ts))
+                      *tac-statements*)]
     (set! *tac-statements* new-tac)
     `(quote ~output)))
 
 (defmacro fc-fn [args body]
   `(fn [~@args] ~(walk/prewalk-replace op-map body)))
+
+(defmacro fc-assoc
+  [def1 def2]
+  (let [def1v (eval def1)
+        def2v (eval def2)
+        ; replace all occurences of def2's wire value with def1's,
+        ; consolidating to a single wire.
+        new-tac (mapv (fn [ts] (map #(if (= % def2v) def1v %) ts))
+                      *tac-statements*)]
+    (set! *tac-statements* new-tac)
+    `(quote ~def2v)))
 
 (defmacro fc-lisp->tac
   [& fc-lisp-statements]
