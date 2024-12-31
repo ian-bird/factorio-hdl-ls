@@ -110,6 +110,9 @@
   [& statements]
   (last statements))
 
+; this needs to be a macro since we don't want to evaluate
+; arguments passed to it. We're doing pretty advanced code
+; replacement and capture.
 (defmacro fc-lisp->tac
   [& fc-lisp-statements]
   ; we're using a temp namespace to prevent fc-def defmacros
@@ -130,4 +133,6 @@
       (in-ns old-ns)
       (remove-ns temp-ns)
       ;return output
-      `(~'tac ~@*tac-statements*))))
+      `(quote ( ~@*tac-statements*)))))
+
+(fc-lisp->tac (def square (fn [x](* x x))) (+ (square 3) 16))

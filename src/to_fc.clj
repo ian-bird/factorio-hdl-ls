@@ -25,3 +25,25 @@
                            second-val
                            :operation operator
                            :output_signal output-signal}})
+
+(defn determine-wires
+  [& tacs]
+  (let [gensyms (->> tacs
+                     (mapcat rest)
+                     (filter symbol?)
+                     set)
+        entity#-outputs (fn [gensym]
+                          (->> tacs
+                               (map-indexed #(vector (last %2) (inc %1)))
+                               (filter #(= gensym (% 0)))
+                               (map second)))
+        entity#-inputs (fn [gensym]
+                         (->> tacs
+                              (map-indexed #(vector (drop-last %2) (inc %1)))
+                              (filter (fn [tac] (some #(= gensym %) (first tac))))
+                              (map second)))]
+     (->> gensyms
+          (mapcat (fn [gensym] (for [input (entity#-inputs gensym)
+                               output (entity#-outputs gensym)]
+                           [output 3 input 1])))
+          vec)))
