@@ -134,5 +134,3 @@
       (remove-ns temp-ns)
       ;return output
       `(quote ( ~@*tac-statements*)))))
-
-(fc-lisp->tac (def square (fn [x](* x x))) (+ (square 3) 16))

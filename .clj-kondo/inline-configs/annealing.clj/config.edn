@@ -1,0 +1,1 @@
+{:lint-as {annealing/loop-until-repeat clojure.core/loop}}
