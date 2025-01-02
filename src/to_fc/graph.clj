@@ -18,8 +18,7 @@
    split them up to a list of fully traversable graphs"
   [nodes->adjacent-nodes]
   (reduce (fn [coll-of-graphs node]
-            (let [matching-fn (fn [graph]
-                                (contains? (apply set/union (vals graph)) node))
+            (let [matching-fn (fn [graph] ((apply set/union (vals graph)) node))
                   matches (filter matching-fn coll-of-graphs)
                   don't-match (remove matching-fn coll-of-graphs)]
               (conj don't-match
@@ -36,8 +35,7 @@
     (let [next-level (->> this-level
                           (mapcat #(graph %))
                           distinct
-                          (remove #(or ( contains? result %)
-                                       (contains? (set this-level) %))))
+                          (remove #(or (result %) ((set this-level) %))))
           without-cycles (map (fn [node] [node
                                           (set/difference (graph node)
                                                           (set (keys result))

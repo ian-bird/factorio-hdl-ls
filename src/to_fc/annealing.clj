@@ -39,7 +39,7 @@
         loop-arg-names (mapv first (partition 2 loop-args))]
     `(loop [~@loop-args ~inputs-set
             #{}]
-       (if (contains? ~inputs-set ~loop-arg-names)
+       (if (~inputs-set ~loop-arg-names)
          ~loop-arg-names
          ~(walk/prewalk (fn [sym]
                           (if (and (list? sym) (= 'recur (first sym)))

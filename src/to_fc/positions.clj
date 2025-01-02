@@ -34,14 +34,13 @@
     ; already been encountered, heat the map, place it between the ones it
     ; connects to, then cool down, otherwise just place on top while cool.
     (reduce (fn [nodes->positions node]
-              (if (some #(contains? nodes->positions %) (combinator-graph node))
+              (if (some #(nodes->positions %) (combinator-graph node))
                 (->> nodes->positions
                      annealing/heat
                      (annealing/place-node
                       {node (->> nodes->positions
                                  (filter (fn [[k _]]
-                                           (contains? (combinator-graph node)
-                                                      k)))
+                                           ((combinator-graph node) k)))
                                  (into {})
                                  annealing/center-of-mass)})
                      annealing/cool)

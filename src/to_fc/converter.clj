@@ -139,7 +139,7 @@
              (mapcat (fn [[_ a _ b]] [[a b] [b a]]))
              (reduce (fn [m [k v]] (merge-with #(set/union %1 %2) m {k #{v}}))
                      {}))
-        missing (remove #(contains? wired-combinators %)
+        missing (remove #(wired-combinators %)
                         (range 1 (inc num-tacs)))]
     (apply conj wired-combinators (map #(vector % #{}) missing))))
 
@@ -165,7 +165,7 @@
         tac->comparator
         {'tac> ">" 'tac< "<" 'tac= "=" 'tac!= "!=" 'tac>= ">=" 'tac<= "<="}
         tac-vec (vec tac)]
-    (if (contains? tac->operation (first tac))
+    (if (tac->operation (first tac))
       {:entity_number entity-num
        :name "arithmetic-combinator"
        :position {:x (position 0) :y (+ (* (position 1) 2) 0.5)}

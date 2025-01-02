@@ -92,12 +92,12 @@
                           ;
                           ; when we find them we need to replace these with
                           ; our output wire, and insert the consequent
-                          ; output as the pass-through.
-                          ; additionally, we need to add a *1 combinator on the
-                          ; output, to allow remapping the signal to a common
-                          ; output channel. 
+                          ; output as the pass-through. Additionally, we
+                          ; need to add a *1 combinator on the output, to
+                          ; allow remapping the signal to a common
+                          ; output channel.
                           (if (and (= 4 (count ts))
-                                   (contains? antecent->consequent (last ts)))
+                                   (antecent->consequent (last ts)))
                             (let [intermediate (gensym)
                                   tsv (vec ts)]
                               (list (list (tsv 0)
