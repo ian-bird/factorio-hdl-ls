@@ -155,7 +155,7 @@
     (if (contains? tac->operation (first tac))
       {:entity_number entity-num
        :name "arithmetic-combinator"
-       :position {:x (* 2 (position 0)) :y (+ (* (position 1) 2) 0.5)}
+       :position {:x (position 0) :y (+ (* (position 1) 2) 0.5)}
        :direction 0
        :control_behavior
        {:arithmetic_conditions
@@ -167,7 +167,7 @@
          :output_signal (tac-vec 3)}}}
       {:entity_number entity-num
        :name "decider-combinator"
-       :position {:x (* 2 (position 0)) :y (+ (* (position 1) 2) 0.5)}
+       :position {:x (position 0) :y (+ (* (position 1) 2) 0.5)}
        :direction 0
        :control_behavior
        {:decider_conditions

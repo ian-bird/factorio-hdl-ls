@@ -1,6 +1,5 @@
 (ns spec.blueprint
-  (:require
-   [clojure.spec.alpha :as s]
+  (:require 
    [spec.shorthand :as shorthand]))
 
 (defn signal [] '(or {:name string?} {:type string? :name string?}))
