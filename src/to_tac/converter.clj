@@ -1,11 +1,23 @@
-(ns to-tac 
+(ns to-tac.converter 
   (:require
    [clojure.walk :as walk]
-   [keyword-modifiers :as km]))
+   [to-tac.keyword-modifiers :as km]))
 
+; When something is compiled, it outputs its three address code
+; into this variable. The to-tac function binds it so that it can
+; be used.
 (def ^:dynamic *tac-statements* nil)
 
-(defmacro eval-with-tac-append
+; macro for creating namespace-level definitions from a map.
+; each definition handles one fc command and returns the gensym
+; that it outputs. This allows for efficient in-place parsing.
+;
+; Each generated function also has the side effect of pushing
+; it's equivalent tac code to the tac statements dynamic variable,
+; which contains the compiled output code.
+; clojure's evaluation order ensures that the dynamic var
+; is extended in the proper order.
+(defmacro eval-with-tac-append 
   [names]
   (let [;create the fc and tac names and associate them
         fc->tac-names (map (fn [name] [(symbol (str "fc" name))
@@ -49,6 +61,8 @@
    'assoc 'fc-assoc
    'do 'fc-do})
 
+; create all the definitions for the different operations
+; for compilation
 (eval-with-tac-append (map #(symbol (apply str (drop 2 (str %))))
                            (vals op-map)))
 
@@ -79,6 +93,9 @@
                           ; when we find them we need to replace these with
                           ; our output wire, and insert the consequent
                           ; output as the pass-through.
+                          ; additionally, we need to add a *1 combinator on the
+                          ; output, to allow remapping the signal to a common
+                          ; output channel. 
                           (if (and (= 4 (count ts))
                                    (contains? antecent->consequent (last ts)))
                             (let [intermediate (gensym)
@@ -125,7 +142,7 @@
               *ns* temp-ns]
       (in-ns temp-ns)
       (ns temp-ns
-        (:require [to-tac :refer :all]))
+        (:require [to-tac.converter :refer :all]))
       ; doall to force side effects on *tac-stmts*
       (doall (->> fc-lisp-statements
                   ; need to remap the operations so that the correct macros

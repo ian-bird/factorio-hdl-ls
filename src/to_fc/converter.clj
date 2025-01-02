@@ -1,8 +1,8 @@
-(ns to-fc 
+(ns to-fc.converter 
   (:require
    [clojure.set :as set]
    [clojure.walk :as walk]
-   [fc-positions :as fcp]))
+   [to-fc.positions :as pos]))
 
 (defn merge-overlapping-sets
   "given a coll of sets, merge all ones whose intersection is not the empty set.
@@ -72,6 +72,14 @@
   "given a coll of tacs replace all gensysms with appropriate
    signals. shadowing is prevented by tracing wire networks."
   [tacs]
+  ; the overall goal here is to group gensyms into groups based off what
+  ; networks they appear on. so we need to grab the wires that the gensym
+  ; passes over, and then get the network that wire is a part of. then we
+  ; can group gensysms by network, and then associate each one with a
+  ; signal that's unique for that network.
+  ;
+  ; then all we need to do is just replace every occurence of the gensym in
+  ; the tacs with its appropriate signal replacement.
   (let [wires (distinct (tacs->wires tacs))
         terminal-networks (group-into-networks wires)
         gensyms (extract-gensyms tacs)
@@ -139,6 +147,11 @@
   "convert a single tac into an entity. 
    !!GENSYM REPLACEMENT MUST HAVE HAPPENED FIRST!!"
   [tac entity-num position]
+  ; this converts a tac with some metadata into the format that factorio
+  ; blueprints expect for an entity
+  ;
+  ; almost all the code in here is just to restructure the data into
+  ; the format that factorio expects.
   (let [tac->operation {'tac+ "+"
                         'tac- "-"
                         'tac* "*"
@@ -171,11 +184,21 @@
        :direction 0
        :control_behavior
        {:decider_conditions
-        {:conditions [{:first_signal (tac-vec 1)
-                       (if (number? (tac-vec 2)) :constant :second_signal)
-                       (tac-vec 2)
-                       :comparator (tac->comparator (tac-vec 0))}]
-         :outputs [{:signal (tac-vec 3) :copy_count_from_input true}]}}})))
+        {:conditions
+         [{:first_signal
+           (if (number? (tac-vec 1))
+             (throw
+              (Exception.
+               "ERROR: first argument for predicate cannot be a number."))
+             (tac-vec 1))
+           (if (number? (tac-vec 2)) :constant :second_signal) (tac-vec 2)
+           :comparator (tac->comparator (tac-vec 0))}]
+         :outputs [{:signal (if (number? (tac-vec 3))
+                              (throw
+                               (Exception.
+                                "ERROR: consequent cannot be a number."))
+                              (tac-vec 3))
+                    :copy_count_from_input true}]}}})))
 
 (defn tac->fc
   "convert tac statements into fully formed blueprint struct"
@@ -183,10 +206,13 @@
   (let [wires (tacs->wires tac-statements)
         positions-map (->> wires
                            (wires->combinator-graph (count tac-statements))
-                           fcp/determine-positions)
+                           pos/determine-positions)
         entities (mapv #(one-tac->entity %1 %2 (positions-map %2))
                        (gensyms->signals tac-statements)
                        (range 1 (inc (count tac-statements))))]
+    ; return the data in the format that factorio blueprint expects. Essentially
+    ; just restructuring into a json-esque structure.
+    ; the keywords will automatically be converted into strings.
     {:blueprint {:icons [{:signal {:type "virtual" :name "signal-L"} :index 1}]
                  :entities entities
                  :wires wires

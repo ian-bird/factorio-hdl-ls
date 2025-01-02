@@ -42,8 +42,7 @@
        deflate-bytes
        b64/encode
        String.
-       (list "0")
-       str/join))
+       (str "0")))
 
 (defn to-sexpr
   [blueprint-string]

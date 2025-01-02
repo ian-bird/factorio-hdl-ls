@@ -1,4 +1,4 @@
-(ns graph 
+(ns to-fc.graph 
   (:require
    [clojure.set :as set]))
 
@@ -12,14 +12,6 @@
       (if (empty? this-level)
         result
         (recur next-level (apply conj result atoms-on-this-level))))))
-
-(defn edges
-  "returns a list of all the edges between nodes in the graph "
-  [nodes->adjacent-nodes]
-  (->> nodes->adjacent-nodes
-       (mapcat (fn [[node adjacents]] (map #(vector node %) adjacents)))
-       (map sort)
-       distinct))
 
 (defn class->coll-of-graphs
   "given a graph that includes potentially non-connected graphs,

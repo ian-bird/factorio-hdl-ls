@@ -1,7 +1,7 @@
-(ns fc-positions
+(ns to-fc.positions
   (:require
-   [annealing]
-   [graph]))
+   [to-fc.annealing :as annealing]
+   [to-fc.graph :as graph]))
 
 (defn valid-graph?
   "returns true if all connections between nodes are shorter than

@@ -1,4 +1,4 @@
-(ns keyword-modifiers)
+(ns to-tac.keyword-modifiers)
 
 (defmacro coerce-qualified-kw
   [x]
