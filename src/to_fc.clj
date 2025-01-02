@@ -1,23 +1,22 @@
 (ns to-fc 
   (:require
    [clojure.set :as set]
-   [clojure.walk :as walk]))
+   [clojure.walk :as walk]
+   [fc-positions :as fcp]))
 
 (defn merge-overlapping-sets
   "given a coll of sets, merge all ones whose intersection is not the empty set.
    This replaces all sets with a non-empty intersection with a single set whose
    value is the union of the component sets."
   [sets]
-  (loop [sets sets
-         result []]
-    (if (empty? sets)
-      result
-      (recur (filter #(empty? (set/intersection (first sets) %)) sets)
-             (->> sets
-                  rest
-                  (remove #(empty? (set/intersection (first sets) %)))
-                  (apply set/union (first sets))
-                  (conj result))))))
+  (reduce (fn [coll-of-sets set]
+            (let [matching-fn (fn [set-from-coll]
+                                (seq (set/intersection set-from-coll set)))
+                  matches (filter matching-fn coll-of-sets)
+                  don't-match (remove matching-fn coll-of-sets)]
+              (conj don't-match (apply set/union set matches))))
+          []
+          sets))
 
 (defn get-terminals
   "returns a set of all the combinators that a gensym goes to.
@@ -39,8 +38,8 @@
   "converts the terminal structure into half of a wire vector"
   [terminal]
   (if (:input terminal)
-    [1 (:input terminal)]
-    [3 (:output terminal)]))
+    [(:input terminal) 1]
+    [(:output terminal) 3]))
 
 (defn extract-gensyms
   "get all the unique gensyms used in a series of tacs"
@@ -50,7 +49,7 @@
        (filter symbol?)
        set))
 
-(defn determine-wires
+(defn tacs->wires
   "calculates wire routing between combinators specified using tac code."
   [tacs]
   (->> tacs
@@ -60,7 +59,9 @@
                       (get-terminals tacs)
                       (map terminal->half-wire)
                       (partition 2 1))))
-       (mapv #(vec (apply concat %)))))
+       (map #(vec (apply concat %)))
+       distinct
+       vec))
 
 (defn group-into-networks
   "given a list of wires, group them into sets of connected terminals"
@@ -71,7 +72,7 @@
   "given a coll of tacs replace all gensysms with appropriate
    signals. shadowing is prevented by tracing wire networks."
   [tacs]
-  (let [wires (determine-wires tacs)
+  (let [wires (distinct (tacs->wires tacs))
         terminal-networks (group-into-networks wires)
         gensyms (extract-gensyms tacs)
         gensyms->half-wires (->> gensyms
@@ -94,33 +95,100 @@
                                  base-mapping
                                  gensyms->half-wires)
         gensym-groups (vals network->gensyms)
-        signal-names (map (fn [i] {:type "virtual" :name (str "signal-" i)})
-                          (range 9))]
-    (if (some #(< 10 (count %)) gensym-groups)
+        signal-names (concat
+                      (map (fn [i] {:type "virtual" :name (str "signal-" i)})
+                           (range 9))
+                      (map (fn [c] {:type "virtual" :name (str "signal-" c)})
+                           (map char (range 65 91))))
+        ; we need to do a special case for decider combinators. The output
+        ; symbol needs to be replaced with the input symbol, and its
+        ; guaranteed to have no impact on the other circuits or networks.
+        update-decider-outputs (reduce (fn [update-map tac]
+                                         (if (= 5 (count tac))
+                                           (assoc update-map
+                                                  (nth tac 4) (nth tac 3))
+                                           update-map))
+                                       (into {} (map #(vector % %) gensyms))
+                                       tacs)]
+    (if (some #(< 36 (count %)) gensym-groups)
       (throw (Exception. "circuit network too big! Redesign determine-wires"))
-      (walk/prewalk-replace
-       (->> gensym-groups
-            (mapcat (fn [gensym-group]
-                      (map #(vector %1 %2) gensym-group signal-names)))
-            (into {}))
-       tacs))))
+      (->> tacs
+           (walk/prewalk-replace update-decider-outputs)
+           (walk/prewalk-replace
+            (->> gensym-groups
+                 (mapcat (fn [gensym-group]
+                           (map #(vector %1 %2) gensym-group signal-names)))
+                 (into {})))
+           ; the piped-in symbol isn't part of the entity description, and
+           ; its redundant, so drop it.
+           (map #(if (= 5 (count %)) (drop-last %) %))))))
 
 (defn wires->combinator-graph
   "generate a hashmap of combinator numbers to the combinators they connect to"
-  [wires]
-  (->> wires
-       (mapcat (fn [[_ a _ b]] [[a b] [b a]]))
-       (reduce (fn [m [k v]] (merge-with #(set/union %1 %2) m {k #{v}})) {})))
+  [num-tacs wires]
+  (let [wired-combinators
+        (->> wires
+             (mapcat (fn [[_ a _ b]] [[a b] [b a]]))
+             (reduce (fn [m [k v]] (merge-with #(set/union %1 %2) m {k #{v}}))
+                     {}))
+        missing (remove #(contains? wired-combinators %)
+                        (range 1 (inc num-tacs)))]
+    (apply conj wired-combinators (map #(vector % #{}) missing))))
 
-(defn tac->fc [& tac-statements]
-  )
+(defn one-tac->entity
+  "convert a single tac into an entity. 
+   !!GENSYM REPLACEMENT MUST HAVE HAPPENED FIRST!!"
+  [tac entity-num position]
+  (let [tac->operation {'tac+ "+"
+                        'tac- "-"
+                        'tac* "*"
+                        'tac-div "/"
+                        'tac-mod "%"
+                        'tac-bit-shift-left "<<"
+                        'tac-bit-shift-right ">>"
+                        'tac-bit-and "AND"
+                        'tac-bit-or "OR"
+                        'tac-bit-xor "XOR"}
+        tac->comparator
+        {'tac> ">" 'tac< "<" 'tac= "=" 'tac!= "!=" 'tac>= ">=" 'tac<= "<="}
+        tac-vec (vec tac)]
+    (if (contains? tac->operation (first tac))
+      {:entity_number entity-num
+       :name "arithmetic-combinator"
+       :position {:x (* 2 (position 0)) :y (+ (* (position 1) 2) 0.5)}
+       :direction 0
+       :control_behavior
+       {:arithmetic_conditions
+        {(if (number? (tac-vec 1)) :first_constant :first_signal) (tac-vec
+                                                                   1)
+         (if (number? (tac-vec 2)) :second_constant :second_signal) (tac-vec
+                                                                     2)
+         :operation (tac->operation (tac-vec 0))
+         :output_signal (tac-vec 3)}}}
+      {:entity_number entity-num
+       :name "decider-combinator"
+       :position {:x (* 2 (position 0)) :y (+ (* (position 1) 2) 0.5)}
+       :direction 0
+       :control_behavior
+       {:decider_conditions
+        {:conditions [{:first_signal (tac-vec 1)
+                       (if (number? (tac-vec 2)) :constant :second_signal)
+                       (tac-vec 2)
+                       :comparator (tac->comparator (tac-vec 0))}]
+         :outputs [{:signal (tac-vec 3) :copy_count_from_input true}]}}})))
 
-
-
-(wires->combinator-graph (determine-wires '((tac* 0 0 G__17787)
-                                            (tac* 0 1 G__17788)
-                                            (tac* 0 2 G__17789)
-                                            (tac* G__17787 1 G__17790)
-                                            (tac= 0 G__17788 G__17790 G__17790)
-                                            (tac* G__17787 1 G__17793)
-                                            (tac= 0 G__17222 G__17793 G__17793))))
+(defn tac->fc
+  "convert tac statements into fully formed blueprint struct"
+  [& tac-statements]
+  (let [wires (tacs->wires tac-statements)
+        positions-map (->> wires
+                           (wires->combinator-graph (count tac-statements))
+                           fcp/determine-positions)
+        entities (mapv #(one-tac->entity %1 %2 (positions-map %2))
+                       (gensyms->signals tac-statements)
+                       (range 1 (inc (count tac-statements))))]
+    {:blueprint {:icons [{:signal {:type "virtual" :name "signal-L"} :index 1}]
+                 :entities entities
+                 :wires wires
+                 :item "blueprint"
+                 :version 1}}))

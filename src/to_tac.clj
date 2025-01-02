@@ -31,7 +31,7 @@
    '- 'fc-
    '* 'fc*
    '/ 'fc-div
-   'modulo 'fc-modulo
+   'mod 'fc-mod
    'bit-shift-left 'fc-bit-shift-left
    'bit-shift-right 'fc-bit-shift-right
    'bit-and 'fc-bit-and
@@ -65,30 +65,32 @@
                       (partition 2 2)
                       (mapcat reverse))))
 
-(defn fc-cond-fn [& conditions]
-  (let [
-        antecent->consequent (->> conditions
+(defn fc-cond-fn
+  [& conditions]
+  (let [antecent->consequent (->> conditions
                                   (partition 2 2)
                                   (mapcat reverse)
                                   (apply hash-map))
         output (gensym)
-        new-tac (mapv (fn [ts]
+        new-tac (mapcat (fn [ts]
                           ; looking for tac statements that have outputs
                           ; matching our antecedents
                           ;
                           ; when we find them we need to replace these with
-                          ; our output wire, and insert the consequent output
-                          ; as the pass-through.
-                        (if (and (= 4 (count ts))
-                                 (contains? antecent->consequent (last ts)))
-                          (let [tsv (vec ts)]
-                            (list (tsv 0)
-                                  (tsv 1)
-                                  (tsv 2)
-                                  (antecent->consequent (last ts))
-                                  output))
-                          ts))
-                      *tac-statements*)]
+                          ; our output wire, and insert the consequent
+                          ; output as the pass-through.
+                          (if (and (= 4 (count ts))
+                                   (contains? antecent->consequent (last ts)))
+                            (let [intermediate (gensym)
+                                  tsv (vec ts)]
+                              (list (list (tsv 0)
+                                          (tsv 1)
+                                          (tsv 2)
+                                          (antecent->consequent (last ts))
+                                          intermediate)
+                                    (list 'tac* 1 intermediate output)))
+                            (list ts)))
+                        *tac-statements*)]
     (set! *tac-statements* new-tac)
     output))
 

@@ -29,8 +29,8 @@
             (let [matching-fn (fn [graph]
                                 (contains? (apply set/union (vals graph)) node))
                   matches (filter matching-fn coll-of-graphs)
-                  doesnt-match (remove matching-fn coll-of-graphs)]
-              (conj doesnt-match
+                  don't-match (remove matching-fn coll-of-graphs)]
+              (conj don't-match
                     (apply merge {node (nodes->adjacent-nodes node)} matches))))
           []
           (keys nodes->adjacent-nodes)))
