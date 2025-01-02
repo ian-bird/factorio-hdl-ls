@@ -12,7 +12,3 @@
 
              ; create the memory cell
              (mem set-temp bus))
-
-
-(hdl/compile (def bus (* 0 0))
-             (cond (> bus 0) (* 0 0)))
