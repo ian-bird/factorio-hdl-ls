@@ -98,6 +98,10 @@ inside a function.
 fc-hdl-ls doesn't support more than 36 signals on the same wire, so keep this in
 mind when designing things like memory banks.
 
+Additionally, recursion is not supported in functions. This is mostly due to the
+difficulty of statically expanding recursive definitions into finite space.
+So don't write them!
+
 # How to use
 The primary function is compile in core. It takes fc-hdl lisp as its argument,
 and returns the compiled string. An example of its use is in examples.
