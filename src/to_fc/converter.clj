@@ -136,7 +136,7 @@
   [num-tacs wires]
   (let [wired-combinators
         (->> wires
-             (mapcat (fn [[_ a _ b]] [[a b] [b a]]))
+             (mapcat (fn [[a _ b _]] [[a b] [b a]]))
              (reduce (fn [m [k v]] (merge-with #(set/union %1 %2) m {k #{v}}))
                      {}))
         missing (remove #(wired-combinators %)
