@@ -67,3 +67,25 @@
            (max-depth (acyclic-graph->tree (remove-cycles graph node) node)))
          (distinct (concat (keys graph) (mapcat #(into [] %) (vals graph))))))
 
+(defn minimum-spanning-tree
+  "given a graph of connections and a map of node pairs to their weight,
+   find a tree the minimizes the max edge weight that occrs."
+  ; graph is of form {node #{connectec-nodes}, ...}
+  ; edge weights of form {[node-a node-b] distance}
+  [graph edge-weights]
+  (loop [visited #{(ffirst graph)}
+         result {}]
+    (let [unvisited (remove visited (keys graph))]
+      (if (empty? unvisited)
+        result
+        (let [smallest-edge (apply min-key
+                                   #(edge-weights %)
+                                   (for [visited-node visited
+                                         unvisited-node unvisited]
+                                     [visited-node unvisited-node]))
+              visited-node (first (filter visited smallest-edge))
+              unvisited-node (first (remove visited smallest-edge))]
+          (recur (conj visited unvisited-node)
+                 (if (result visited-node)
+                   (update result visited-node #(conj % unvisited-node))
+                   (assoc result visited-node #{unvisited-node})))))))) 

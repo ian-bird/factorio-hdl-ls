@@ -2,7 +2,8 @@
   (:require
    [clojure.set :as set]
    [clojure.walk :as walk]
-   [to-fc.positions :as pos]))
+   [to-fc.positions :as pos]
+   [to-fc.graph :as graph]))
 
 (defn merge-overlapping-sets
   "given a coll of sets, merge all ones whose intersection is not the empty set.
@@ -80,8 +81,7 @@
   ;
   ; then all we need to do is just replace every occurence of the gensym in
   ; the tacs with its appropriate signal replacement.
-  (let [wires (distinct (tacs->wires tacs))
-        terminal-networks (group-into-networks wires)
+  (let [terminal-networks (group-into-networks (distinct (tacs->wires tacs)))
         gensyms (extract-gensyms tacs)
         gensyms->half-wires (->> gensyms
                                  (map #(vector %
@@ -200,16 +200,50 @@
                               (tac-vec 3))
                     :copy_count_from_input true}]}}})))
 
+(defn optimal-wires
+  [wires nodes->positions]
+  (let [networks (group-into-networks wires)
+        graphs (map (fn [network]
+                      (->> (for [from network to network] [from to])
+                           (remove (fn [[from to]] (= from to)))
+                           (reduce (fn [h [from to]]
+                                     (update h from (partial cons to)))
+                                   {})
+                           (#(update-vals % set))))
+                    networks)]
+    (mapcat (fn [a-graph]
+              (let [mst (graph/minimum-spanning-tree a-graph
+                                                     (fn [[[ a _] [ b _]]]
+                                                       (pos/distance
+                                                        (nodes->positions a)
+                                                        (nodes->positions b))))
+                    tree (graph/acyclic-graph->tree mst (ffirst mst))
+                    ; given the tree structure, we want to connect each
+                    ; node to its children we do this by concating the root
+                    ; of the current tree with the node value of each, and
+                    ; then concating the array of those with the result of
+                    ; calling this function on each child.
+                    into-wires ((fn self [tree]
+                                  (apply concat
+                                         (map #(vec (concat (first tree) (first %)))
+                                              (rest tree))
+                                         (map self (rest tree))))
+                                tree)]
+                into-wires))
+            graphs)))
+
 (defn tac->fc
   "convert tac statements into fully formed blueprint struct"
   [& tac-statements]
-  (let [wires (tacs->wires tac-statements)
-        positions-map (->> wires
-                           (wires->combinator-graph (count tac-statements))
-                           pos/determine-positions)
+  (let [combinator-graph  (->> tac-statements
+                               tacs->wires
+                               (wires->combinator-graph (count tac-statements)))
+        positions-map (pos/determine-positions combinator-graph)
+
         entities (mapv #(one-tac->entity %1 %2 (positions-map %2))
                        (gensyms->signals tac-statements)
-                       (range 1 (inc (count tac-statements))))]
+                       (range 1 (inc (count tac-statements))))
+        wires (optimal-wires (tacs->wires tac-statements) positions-map)]
     ; return the data in the format that factorio blueprint expects. Essentially
     ; just restructuring into a json-esque structure.
     ; the keywords will automatically be converted into strings.

@@ -1,6 +1,14 @@
 (ns to-fc.positions
-  (:require 
-   [to-fc.graph :as graph]))
+  (:require [clojure.math :as math]
+            [to-fc.graph :as graph]))
+
+(defn distance
+  "returns the distance between two points"
+  [position-a position-b]
+  (->> (map - position-a position-b)
+       (map #(* % %))
+       (reduce + 0)
+       math/sqrt))
 
 (defn center-of-mass
   "given a list of nodes and their positions, calculate the average position.
