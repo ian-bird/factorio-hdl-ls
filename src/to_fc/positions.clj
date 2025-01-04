@@ -1,16 +1,46 @@
 (ns to-fc.positions
-  (:require
-   [to-fc.annealing :as annealing]
+  (:require 
    [to-fc.graph :as graph]))
 
-(defn valid-graph?
-  "returns true if all connections between nodes are shorter than
-   or equal to the max length for connections"
-  [edges nodes->positions max-edge-len]
-  (every? (fn [[a b]]
-            (<= (annealing/distance (nodes->positions a) (nodes->positions b))
-                max-edge-len))
-          edges))
+(defn center-of-mass
+  "given a list of nodes and their positions, calculate the average position.
+   This is needed for the annealing process."
+  [nodes->positions]
+  (if (= 0 (count nodes->positions))
+    [0 0]
+    (->> nodes->positions
+         vals
+         (reduce (fn [[sum-x sum-y] [x y]] [(+ sum-x x) (+ sum-y y)]) [0 0])
+         (mapv #(int (/ % (count nodes->positions)))))))
+
+(defn nearest-empty-spot
+  "find the nearest empty spot along an axis from the given position"
+  [node->positions desired-position]
+  ; determine which direction has an empty spot closest to the desired spot
+  (let [dirs [[0 1] [0 -1] [1 0] [-1 0]]]
+    (->> (range)
+         (map (fn [d] (map (fn [[y x]][(* y d) (* x (int (/ d 2)))]) dirs)))
+         (map (partial map (partial map + desired-position)))
+         (remove (partial every? (partial (set (vals node->positions)))))
+         first
+         (remove (partial (set (vals node->positions))))
+         first
+         vec)))
+
+(defn ripple-nodes
+  "given a from and a to, ripple every node over towards it.
+   from and to MUST share one x or y value minimum."
+  [nodes->positions from to]
+  (loop [nodes->positions nodes->positions
+         from from
+         to to]
+    (if (not (= from to))
+      (let [axis (map #(if (= 0 %) 0 (/ % (abs %))) (map - from to))
+            to-ripple (mapv + axis to)]
+        (recur (update-vals nodes->positions #(if (= to-ripple %) to %))
+               from
+               to-ripple))
+      nodes->positions)))
 
 (defn determine-positions
   "given a map of entity numbers to adjacent entities,
@@ -31,21 +61,26 @@
                                    (graph/acyclic-graph->tree root)
                                    graph/breadth-first)))))]
     ; for each node in the given order, if it connects to one that's
-    ; already been encountered, heat the map, place it between the ones it
-    ; connects to, then cool down, otherwise just place on top while cool.
+    ; already been encountered, ripple space to place it at the desired
+    ; spot
     (reduce (fn [nodes->positions node]
-              (if (some #(nodes->positions %) (combinator-graph node))
-                (->> nodes->positions
-                     annealing/heat
-                     (annealing/place-node
-                      {node (->> nodes->positions
-                                 (filter (fn [[k _]]
-                                           ((combinator-graph node) k)))
-                                 (into {})
-                                 annealing/center-of-mass)})
-                     annealing/cool)
-                (annealing/place-node {node (annealing/center-of-mass
-                                             nodes->positions)}
-                                      nodes->positions)))
+              (let [has-connections? (some #(nodes->positions %)
+                                           (combinator-graph node))
+                    com (->> nodes->positions
+                             (filter (fn [[k _]] ((combinator-graph node) k)))
+                             (into {})
+                             center-of-mass)
+                    where-to-place (if has-connections?
+                                     com
+                                     (nearest-empty-spot nodes->positions
+                                                         (center-of-mass
+                                                          nodes->positions)))
+                    merge-with (if has-connections?
+                                 (ripple-nodes
+                                  nodes->positions
+                                  com
+                                  (nearest-empty-spot nodes->positions com))
+                                 nodes->positions)]
+                (merge merge-with {node where-to-place})))
             {}
             order)))
