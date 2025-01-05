@@ -24,7 +24,3 @@
         :else `(do ~@(map (fn [[name val]] `(def ~name ~val))
                           (partition 2 bindings))
                    ~@body)))
-
-(macroexpand-1 '(core/let* [clock-input (* 0 0)
-                       clock-gated (cond (< clock-input count-to) clock-input)]
-                      clock-output))
