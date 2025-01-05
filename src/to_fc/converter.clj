@@ -5,19 +5,7 @@
    [to-fc.positions :as pos]
    [to-fc.graph :as graph]))
 
-(defn merge-overlapping-sets
-  "given a coll of sets, merge all ones whose intersection is not the empty set.
-   This replaces all sets with a non-empty intersection with a single set whose
-   value is the union of the component sets."
-  [sets]
-  (reduce (fn [coll-of-sets set]
-            (let [matching-fn (fn [set-from-coll]
-                                (seq (set/intersection set-from-coll set)))
-                  matches (filter matching-fn coll-of-sets)
-                  don't-match (remove matching-fn coll-of-sets)]
-              (conj don't-match (apply set/union set matches))))
-          []
-          sets))
+
 
 (defn get-terminals
   "returns a set of all the combinators that a gensym goes to.
@@ -67,7 +55,7 @@
 (defn group-into-networks
   "given a list of wires, group them into sets of connected terminals"
   [wires]
-  (merge-overlapping-sets (map (fn [[a1 a2 b1 b2]] #{[a1 a2] [b1 b2]}) wires)))
+  (graph/combine-sets (map (fn [[a1 a2 b1 b2]] #{[a1 a2] [b1 b2]}) wires)))
 
 (defn gensyms->signals
   "given a coll of tacs replace all gensysms with appropriate
@@ -213,7 +201,7 @@
                     networks)]
     (mapcat (fn [a-graph]
               (let [mst (graph/minimum-spanning-tree a-graph
-                                                     (fn [[[ a _] [ b _]]]
+                                                     (fn [[[a _] [b _]]]
                                                        (pos/distance
                                                         (nodes->positions a)
                                                         (nodes->positions b))))
@@ -235,17 +223,16 @@
 (defn tac->fc
   "convert tac statements into fully formed blueprint struct"
   [& tac-statements]
-  (let [combinator-graph  (->> tac-statements
-                               tacs->wires
-                               (wires->combinator-graph (count tac-statements)))
+  (let [combinator-graph (->> tac-statements
+                              tacs->wires
+                              (wires->combinator-graph (count tac-statements)))
         positions-map (pos/determine-positions combinator-graph)
-
         entities (mapv #(one-tac->entity %1 %2 (positions-map %2))
                        (gensyms->signals tac-statements)
                        (range 1 (inc (count tac-statements))))
         wires (optimal-wires (tacs->wires tac-statements) positions-map)]
-    ; return the data in the format that factorio blueprint expects. Essentially
-    ; just restructuring into a json-esque structure.
+    ; return the data in the format that factorio blueprint expects.
+    ; Essentially just restructuring into a json-esque structure.
     ; the keywords will automatically be converted into strings.
     {:blueprint {:icons [{:signal {:type "virtual" :name "signal-L"} :index 1}]
                  :entities entities

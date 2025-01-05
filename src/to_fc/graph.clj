@@ -13,18 +13,28 @@
         result
         (recur next-level (apply conj result atoms-on-this-level))))))
 
+(defn combine-sets
+  "given a coll of sets, merge all ones whose intersection is not the empty set.
+   This replaces all sets with a non-empty intersection with a single set whose
+   value is the union of the component sets."
+  [sets]
+  (reduce (fn [coll-of-sets set]
+            (let [matching-fn (fn [set-from-coll]
+                                (seq (set/intersection set-from-coll set)))
+                  matches (filter matching-fn coll-of-sets)
+                  don't-match (remove matching-fn coll-of-sets)]
+              (conj don't-match (apply set/union set matches))))
+          []
+          sets))
+
 (defn class->coll-of-graphs
   "given a graph that includes potentially non-connected graphs,
    split them up to a list of fully traversable graphs"
   [nodes->adjacent-nodes]
-  (reduce (fn [coll-of-graphs node]
-            (let [matching-fn (fn [graph] ((apply set/union (vals graph)) node))
-                  matches (filter matching-fn coll-of-graphs)
-                  don't-match (remove matching-fn coll-of-graphs)]
-              (conj don't-match
-                    (apply merge {node (nodes->adjacent-nodes node)} matches))))
-          []
-          (keys nodes->adjacent-nodes)))
+  (->> nodes->adjacent-nodes
+       (map (fn [[node adjacents]] #(conj adjacents node)))
+       combine-sets
+       (map #(select-keys nodes->adjacent-nodes %))))
 
 (defn remove-cycles
   "doesn't allow elements to point to already visited nodes
