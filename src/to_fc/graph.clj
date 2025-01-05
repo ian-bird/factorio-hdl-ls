@@ -32,7 +32,7 @@
    split them up to a list of fully traversable graphs"
   [nodes->adjacent-nodes]
   (->> nodes->adjacent-nodes
-       (map (fn [[node adjacents]] #(conj adjacents node)))
+       (map (fn [[node adjacents]] (conj adjacents node)))
        combine-sets
        (map #(select-keys nodes->adjacent-nodes %))))
 
@@ -65,9 +65,7 @@
 (defn max-depth
   "gets the maximum nesting depth of a form"
   [form]
-  (if (coll? form)
-    (inc (apply max 0 (map max-depth form )))
-    0))
+  (if (coll? form) (inc (apply max 0 (map max-depth form))) 0))
 
 (defn most-central-node
   "gets the node thats can reach the furthest node in the fewest possible steps"
