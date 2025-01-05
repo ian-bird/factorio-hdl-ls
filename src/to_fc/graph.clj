@@ -20,7 +20,7 @@
   [sets]
   (reduce (fn [coll-of-sets set]
             (let [matching-fn (fn [set-from-coll]
-                                (seq (set/intersection set-from-coll set)))
+                                (not-empty (set/intersection set-from-coll set)))
                   matches (filter matching-fn coll-of-sets)
                   don't-match (remove matching-fn coll-of-sets)]
               (conj don't-match (apply set/union set matches))))
