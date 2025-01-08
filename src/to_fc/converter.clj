@@ -205,7 +205,7 @@
                                                        (pos/distance
                                                         (nodes->positions a)
                                                         (nodes->positions b))))
-                    tree (graph/acyclic-graph->tree mst (ffirst mst))
+                    tree (graph/to-tree mst (ffirst mst))
                     ; given the tree structure, we want to connect each
                     ; node to its children we do this by concating the root
                     ; of the current tree with the node value of each, and

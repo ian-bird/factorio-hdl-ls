@@ -7,16 +7,16 @@
   `(do (require 'to-tac.converter)
        (->> (to-tac.converter/fc-lisp->tac ~@fc-lisp-statements)
             (apply (requiring-resolve 'to-fc.converter/tac->fc))
-            ( (requiring-resolve 'blueprint-serialization/from-sexpr)))))
+            ((requiring-resolve 'blueprint-serialization/from-sexpr)))))
 
 (defmacro defn*
   "functions the same as clojure's define"
   [name args body]
-  `(def ~name (fn [~@args] ~body)))
+  `(def ~name (fn ~args ~body)))
 
 (defmacro let*
   "functions the same as clojure's let"
-  [bindings & body]
+  [bindings & body] 
   (cond (not (vector? bindings)) (throw (Exception.
                                          "Let bindings must be in vector."))
         (not (even? (count bindings))) (throw (Exception.

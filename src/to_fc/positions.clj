@@ -1,6 +1,7 @@
 (ns to-fc.positions
   (:require [clojure.math :as math]
-            [to-fc.graph :as graph]))
+            [to-fc.graph :as graph]
+            [to-fc.tree :as tree]))
 
 (defn distance
   "returns the distance between two points"
@@ -65,9 +66,9 @@
                              (let [root (graph/most-central-node
                                          combinator-graph)]
                                (-> combinator-graph
-                                   (graph/remove-cycles root)
-                                   (graph/acyclic-graph->tree root)
-                                   graph/breadth-first)))))]
+                                   (graph/minimum-spanning-tree (constantly 1))
+                                   (graph/to-tree root)
+                                   tree/breadth-first)))))]
     ; for each node in the given order, if it connects to one that's
     ; already been encountered, ripple space to place it at the desired
     ; spot

@@ -1,6 +1,5 @@
 (ns scratchpad
-  (:require
-   [core]))
+  (:require [core]))
 
 (core/compile 
  (core/defn*
@@ -29,4 +28,3 @@
  (def setm (* 0 30))
  (def readm (* 0 40))
  (mem-bank-2 main-bus setm readm 0 mem-bus))
-
