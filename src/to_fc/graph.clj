@@ -1,12 +1,12 @@
-(ns to-fc.graph 
-  (:require
-   [clojure.set :as set]))
+(ns to-fc.graph
+  (:require [clojure.set :as set]))
 
 (defn breadth-first
   "given a form of the structure [a [b [d e]] [c [f g]]] 
    return [a b c d e f g]"
   [form]
-  (loop [this-level form result []]
+  (loop [this-level form
+         result []]
     (let [next-level (vec (apply concat (filter coll? this-level)))
           atoms-on-this-level (remove coll? this-level)]
       (if (empty? this-level)
@@ -20,12 +20,13 @@
   [sets]
   (reduce (fn [coll-of-sets set]
             (let [matching-fn (fn [set-from-coll]
-                                (not-empty (set/intersection set-from-coll set)))
+                                (not-empty (set/intersection set-from-coll
+                                                             set)))
                   matches (filter matching-fn coll-of-sets)
                   don't-match (remove matching-fn coll-of-sets)]
               (conj don't-match (apply set/union set matches))))
-          []
-          sets))
+    []
+    sets))
 
 (defn class->coll-of-graphs
   "given a graph that includes potentially non-connected graphs,
@@ -50,7 +51,7 @@
                                           (set/difference (graph node)
                                                           (set (keys result))
                                                           (set this-level))])
-                              this-level)]
+                           this-level)]
       (if (empty? next-level)
         result
         (recur (apply conj result without-cycles) next-level)))))
@@ -60,7 +61,7 @@
   [acyclic-graph root]
   (vec (concat [root]
                (map (partial acyclic-graph->tree acyclic-graph)
-                    (acyclic-graph root)))))
+                 (acyclic-graph root)))))
 
 (defn max-depth
   "gets the maximum nesting depth of a form"
@@ -71,9 +72,9 @@
   "gets the node thats can reach the furthest node in the fewest possible steps"
   [graph]
   (apply min-key
-         (fn [node]
-           (max-depth (acyclic-graph->tree (remove-cycles graph node) node)))
-         (distinct (concat (keys graph) (mapcat #(into [] %) (vals graph))))))
+    (fn [node]
+      (max-depth (acyclic-graph->tree (remove-cycles graph node) node)))
+    (distinct (concat (keys graph) (mapcat #(into [] %) (vals graph))))))
 
 (defn minimum-spanning-tree
   "given a graph of connections and a map of node pairs to their weight,
@@ -87,13 +88,32 @@
       (if (empty? unvisited)
         result
         (let [smallest-edge (apply min-key
-                                   #(edge-weights %)
-                                   (for [visited-node visited
-                                         unvisited-node unvisited]
-                                     [visited-node unvisited-node]))
+                              #(edge-weights %)
+                              (for [visited-node visited
+                                    unvisited-node unvisited]
+                                [visited-node unvisited-node]))
               visited-node (first (filter visited smallest-edge))
               unvisited-node (first (remove visited smallest-edge))]
           (recur (conj visited unvisited-node)
                  (if (result visited-node)
                    (update result visited-node #(conj % unvisited-node))
-                   (assoc result visited-node #{unvisited-node})))))))) 
+                   (assoc result visited-node #{unvisited-node}))))))))
+
+(defn insert-node
+  "given a graph, add a node between two that point to each other,
+  such that both point to a new node that points to both.
+  a<->b becomes a<->c<->b"
+  [graph n1 n2]
+  (if (and ((graph n1) n2) ((graph n2) n1))
+    (let [new-symbol (->> graph
+                          (mapcat (fn [[k s]] (conj (into [] s) k)))
+                          (apply max)
+                          inc)]
+      (-> graph
+          (update n1 #(conj (disj % n2) new-symbol))
+          (update n2 #(conj (disj % n1) new-symbol))
+          (assoc new-symbol #{n1 n2})))
+    (throw (Exception.
+             "nodes must be adjacent and bi-directional for insertion"))))
+
+

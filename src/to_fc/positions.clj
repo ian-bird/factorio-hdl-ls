@@ -27,7 +27,7 @@
   ; determine which direction has an empty spot closest to the desired spot
   (let [dirs [[0 1] [0 -1] [1 0] [-1 0]]]
     (->> (range)
-         (map (fn [d] (map (fn [[y x]][(* y d) (* x (int (/ d 2)))]) dirs)))
+         (map (fn [d] (map (fn [[y x]] [(* y d) (* x (int (/ d 2)))]) dirs)))
          (map (partial map (partial map + desired-position)))
          (remove (partial every? (partial (set (vals node->positions)))))
          first
@@ -63,7 +63,7 @@
                    (sort-by count >)
                    (mapcat (fn [combinator-graph]
                              (let [root (graph/most-central-node
-                                         combinator-graph)]
+                                          combinator-graph)]
                                (-> combinator-graph
                                    (graph/remove-cycles root)
                                    (graph/acyclic-graph->tree root)
@@ -82,13 +82,56 @@
                                      com
                                      (nearest-empty-spot nodes->positions
                                                          (center-of-mass
-                                                          nodes->positions)))
+                                                           nodes->positions)))
                     merge-with (if has-connections?
                                  (ripple-nodes
-                                  nodes->positions
-                                  com
-                                  (nearest-empty-spot nodes->positions com))
+                                   nodes->positions
+                                   com
+                                   (nearest-empty-spot nodes->positions com))
                                  nodes->positions)]
                 (merge merge-with {node where-to-place})))
-            {}
-            order)))
+      {}
+      order)))
+
+(defn too-long-connections
+  "get all of the connections that are too long and need power poles inserted."
+  [combinator-graph positions len]
+  (->> combinator-graph
+       (mapcat (fn [[key vals]]
+                 (->> vals
+                      (filter #(< len (distance (positions key) (positions %))))
+                      (map (fn [val] [key val])))))
+       (map sort)
+       (map vec)
+       distinct
+       vec))
+
+(defn get-links-between-longs
+  "for each link that's too long, update the combinator graph with additional
+  nodes that make sure that it's the right length"
+  [combinator-graph positions max-len]
+  (let [too-long-pairs (too-long-connections combinator-graph positions max-len)
+        ;; figure out how many nodes we need to insert between ones that
+        ;; are too far apart
+        pairs->how-many? (into {}
+                               (map (fn [pair] [pair
+                                                (quot (int (apply distance
+                                                             (map positions
+                                                               pair)))
+                                                      max-len)])
+                                 too-long-pairs))
+        ;; build a function that inserts n nodes between 2 given nodes in a
+        ;; graph
+        insert-n-nodes (fn recur [graph n1 n2 how-many?]
+                         (let [next-iter (graph/insert-node graph n1 n2)]
+                           (if (= 1 how-many?)
+                             next-iter
+                             (recur next-iter
+                                    n2
+                                    (apply max (keys next-iter))
+                                    (dec how-many?)))))]
+    (reduce (fn [acc [[from to] how-many?]]
+              (insert-n-nodes acc from to how-many?))
+      combinator-graph
+      pairs->how-many?)))
+
