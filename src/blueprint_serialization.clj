@@ -2,7 +2,6 @@
   (:require
    [cheshire.core :as chess]
    [clojure.data.codec.base64 :as b64]
-   [clojure.string :as str]
    [clojure.walk :as walk]))
 
 (import '[java.io ByteArrayOutputStream ByteArrayInputStream]

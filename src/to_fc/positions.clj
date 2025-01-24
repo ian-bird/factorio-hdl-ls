@@ -1,137 +1,125 @@
-(ns to-fc.positions
-  (:require [clojure.math :as math]
-            [to-fc.graph :as graph]))
+(ns to-fc.positions 
+  (:require
+    [clojure.set :as set]))
 
-(defn distance
-  "returns the distance between two points"
-  [position-a position-b]
-  (->> (map - position-a position-b)
-       (map #(* % %))
-       (reduce + 0)
-       math/sqrt))
+(defn add-edge
+  "adds an edge between two nodes in the positioned graph"
+  [positioned-graph from to]
+  (-> positioned-graph
+      (update from (fn [v] (update v :adjacents #(set/union % #{to}))))
+      (update to (fn [v] (update v :adjacents #(set/union % #{from}))))))
 
-(defn center-of-mass
-  "given a list of nodes and their positions, calculate the average position.
-   This is needed for the annealing process."
-  [nodes->positions]
-  (if (= 0 (count nodes->positions))
-    [0 0]
-    (->> nodes->positions
-         vals
-         (reduce (fn [[sum-x sum-y] [x y]] [(+ sum-x x) (+ sum-y y)]) [0 0])
-         (mapv #(int (/ % (count nodes->positions)))))))
+(defn add-node
+  "adds a node into the positioned graph with the given position
+   and adjacents, and optionally the entity number."
+  ([positioned-graph id position adjacents]
+   (reduce (fn [graph adjacent] (add-edge graph id adjacent))
+           (assoc positioned-graph id {:position position :adjacents #{}})
+           adjacents))
+  ([positioned-graph position adjacents]
+   (add-node positioned-graph
+             {:pole (inc (apply max 0 (mapcat vals (keys positioned-graph))))}
+             position
+             adjacents)))
 
-(defn nearest-empty-spot
-  "find the nearest empty spot along an axis from the given position"
-  [node->positions desired-position]
-  ; determine which direction has an empty spot closest to the desired spot
-  (let [dirs [[0 1] [0 -1] [1 0] [-1 0]]]
-    (->> (range)
-         (map (fn [d] (map (fn [[y x]] [(* y d) (* x (int (/ d 2)))]) dirs)))
-         (map (partial map (partial map + desired-position)))
-         (remove (partial every? (partial (set (vals node->positions)))))
-         first
-         (remove (partial (set (vals node->positions))))
-         first
-         vec)))
+(defn missing-vals
+  "find the values we need to insert between from and to
+   such that no jump is greater than max, while also having
+   nice alignment."
+  [from to max offset]
+  (->> (range)
+       (map #(* max %))
+       (map #(-  % offset))
+       (drop-while #(>= from %))
+       (take-while #(> to %))))
 
-(defn ripple-nodes
-  "given a from and a to, ripple every node over towards it.
-   from and to MUST share one x or y value minimum."
-  [nodes->positions from to]
-  (loop [nodes->positions nodes->positions
-         from from
-         to to]
-    (if (not (= from to))
-      (let [axis (map #(if (= 0 %) 0 (/ % (abs %))) (map - from to))
-            to-ripple (mapv + axis to)]
-        (recur (update-vals nodes->positions #(if (= to-ripple %) to %))
-               from
-               to-ripple))
-      nodes->positions)))
+(defn terminal-networks->positioned-graph
+  "given a list of terminal networks, build a naive positioned graph"
+  [terminal-networks]
+  (reduce (fn [graph terminal-network]
+            (reduce (fn [graph terminal]
+                      (assoc graph
+                             terminal {:position [0
+                                                  (+ (if (:output terminal) 0 1)
+                                                     (* 2 (first (vals terminal))))]
+                                       :adjacents (set/difference terminal-network
+                                                                  #{terminal})}))
+                    graph
+                    terminal-network))
+          {}
+          terminal-networks))
 
-(defn determine-positions
-  "given a map of entity numbers to adjacent entities,
-   return a map of entity numbers to positions."
-  [combinator-graph]
-  (let [; the order we place entities needs to be by placing the most
-        ; widely connected nodes first, then going to the ones they connect
-        ; to, placing them in order of how many connections they have, etc.
-        ; So a kind-of oddly ordered breadth first search.
-        order (->> combinator-graph
-                   graph/class->coll-of-graphs
-                   (sort-by count >)
-                   (mapcat (fn [combinator-graph]
-                             (let [root (graph/most-central-node
-                                          combinator-graph)]
-                               (-> combinator-graph
-                                   (graph/remove-cycles root)
-                                   (graph/acyclic-graph->tree root)
-                                   graph/breadth-first)))))]
-    ; for each node in the given order, if it connects to one that's
-    ; already been encountered, ripple space to place it at the desired
-    ; spot
-    (reduce (fn [nodes->positions node]
-              (let [has-connections? (some #(nodes->positions %)
-                                           (combinator-graph node))
-                    com (->> nodes->positions
-                             (filter (fn [[k _]] ((combinator-graph node) k)))
-                             (into {})
-                             center-of-mass)
-                    where-to-place (if has-connections?
-                                     com
-                                     (nearest-empty-spot nodes->positions
-                                                         (center-of-mass
-                                                           nodes->positions)))
-                    merge-with (if has-connections?
-                                 (ripple-nodes
-                                   nodes->positions
-                                   com
-                                   (nearest-empty-spot nodes->positions com))
-                                 nodes->positions)]
-                (merge merge-with {node where-to-place})))
-      {}
-      order)))
+(defn interpose-fn
+  "given an array, interpose an applied function that takes the elements
+   that appear immediately before and after each element"
+  [f coll]
+  (cons (first coll) (mapcat (fn [[a b]] [(f a b) b]) (partition 2 1 coll))))
 
-(defn too-long-connections
-  "get all of the connections that are too long and need power poles inserted."
-  [combinator-graph positions len]
-  (->> combinator-graph
-       (mapcat (fn [[key vals]]
-                 (->> vals
-                      (filter #(< len (distance (positions key) (positions %))))
-                      (map (fn [val] [key val])))))
-       (map sort)
-       (map vec)
-       distinct
-       vec))
+(defn create-wire
+  "creates power poles if positions do not exist, otherwise uses existing ones
+   and builds an edge between nodes"
+  [graph from-pos to-pos]
+  (let [maybe-add (fn [graph position]
+                    (if (some #(= position %) (map :position (vals graph)))
+                      graph
+                      (add-node graph position #{})))
+        graph-with-poles (reduce maybe-add graph [from-pos to-pos])
+        lookup-name (fn [graph position]
+                      ((set/map-invert (update-vals graph :position))
+                       position))]
+    (add-edge graph-with-poles
+              (lookup-name graph-with-poles from-pos)
+              (lookup-name graph-with-poles to-pos))))
 
-(defn get-links-between-longs
-  "for each link that's too long, update the combinator graph with additional
-  nodes that make sure that it's the right length"
-  [combinator-graph positions max-len]
-  (let [too-long-pairs (too-long-connections combinator-graph positions max-len)
-        ;; figure out how many nodes we need to insert between ones that
-        ;; are too far apart
-        pairs->how-many? (into {}
-                               (map (fn [pair] [pair
-                                                (quot (int (apply distance
-                                                             (map positions
-                                                               pair)))
-                                                      max-len)])
-                                 too-long-pairs))
-        ;; build a function that inserts n nodes between 2 given nodes in a
-        ;; graph
-        insert-n-nodes (fn recur [graph n1 n2 how-many?]
-                         (let [next-iter (graph/insert-node graph n1 n2)]
-                           (if (= 1 how-many?)
-                             next-iter
-                             (recur next-iter
-                                    n2
-                                    (apply max (keys next-iter))
-                                    (dec how-many?)))))]
-    (reduce (fn [acc [[from to] how-many?]]
-              (insert-n-nodes acc from to how-many?))
-      combinator-graph
-      pairs->how-many?)))
-
+(defn add-power-poles
+  "given a list of terminal networks, generate a positioned graph
+   including all the power poles needed to link everything."
+  [terminal-networks max-len]
+  (let [initial-graph (terminal-networks->positioned-graph terminal-networks)]
+    (->> (map vector (map inc (range)) terminal-networks)
+         (reduce
+          (fn [graph [index terminal-network]]
+            (let [terminal-positions (->> terminal-network
+                                          (select-keys graph)
+                                          ((fn [m] (update-vals m :position))))
+                  vertical-wiring (->> terminal-positions
+                                       vals
+                                       (map #(% 1))
+                                       sort
+                                       (interpose-fn
+                                        #(missing-vals %1 %2 max-len index))
+                                       flatten
+                                       (map #(vector index %))
+                                       (partition 2 1))
+                  horizontal-wiring
+                  (->> terminal-positions
+                       vals
+                       (map #(% 1))
+                          ;; for each row, generate all the values between
+                          ;; 0 and the index, using the offset based on the
+                          ;; row-num + max-len/2. This means that diagonal
+                          ;; stripes are staggered, and the ones for wires
+                          ;; traveling horizontally will not intersect with
+                          ;; ones for wires traveling vertically.
+                       (mapcat (fn [row-num]
+                                 (->> [0 index]
+                                      (interpose-fn #(missing-vals
+                                                      %1
+                                                      %2
+                                                      max-len
+                                                      (+ row-num
+                                                         (quot max-len 2))))
+                                      flatten
+                                      (map #(vector % row-num))
+                                      (partition 2 1)))))
+                  wiring (concat horizontal-wiring vertical-wiring)]
+              (reduce (fn [graph [from to]] (create-wire graph from to))
+                      graph
+                      wiring)))
+          initial-graph)
+         ((fn [m]
+            (update-vals m
+                         (fn [v]
+                           (if (= 0 ((v :position) 0))
+                             (update v :adjacents #(set (filter :pole %)))
+                             v))))))))

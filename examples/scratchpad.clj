@@ -1,30 +1,15 @@
 (ns scratchpad
-  (:require [core]))
+  (:require
+   [blueprint-serialization]
+   [core]))
 
-(core/compile 
- (core/defn*
-   mem-cell
-    ; address is an int, others are signals.
-   [read-from mem-set mem-read address address-bus]
-   (core/let* [mem-input (cond (and (!= mem-set 0) (= address-bus address)) read-from)
-               mem-internal (cond (or (= mem-set 0) (!= address-bus address)) mem-input)
-               mem-out (cond (and (!= mem-read 0) (= address-bus address)) mem-internal)]
-              (assoc mem-input mem-internal)
-              mem-out))
- 
- (core/defn* mem-bank-2
-   [read-bus set read address address-bus]
-   (core/let* [top-half (bit-shift-right address-bus 1)
-               bottom-half (bit-and address-bus 1)
-               mem-set (cond (= top-half address) set)
-               mem-read (cond (= top-half address) read)
-               output (* 0 0)]
-              (assoc (mem-cell read-bus mem-set mem-read 0 bottom-half) output)
-              (assoc (mem-cell read-bus mem-set mem-read 1 bottom-half) output) 
-              output)) 
- 
- (def main-bus (* 0 10))
- (def mem-bus (* 0 20))
- (def setm (* 0 30))
- (def readm (* 0 40))
- (mem-bank-2 main-bus setm readm 0 mem-bus))
+(core/compile
+ (def clock
+   (fn [count-to]
+     (do (def clock-input (* 0 0))
+         (def clock-gated (cond (< clock-input count-to) clock-input))
+         (def inc-clock (+ clock-gated 1))
+         (def clock-output (cond (> inc-clock (/ count-to 2)) (* 1 1)))
+         (assoc clock-input inc-clock)
+         clock-output)))
+ (clock 30))

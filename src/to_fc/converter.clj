@@ -1,11 +1,8 @@
 (ns to-fc.converter 
   (:require
-   [clojure.set :as set]
    [clojure.walk :as walk]
-   [to-fc.positions :as pos]
-   [to-fc.graph :as graph]))
-
-
+   [to-fc.graph :as graph]
+   [to-fc.positions :as pos]))
 
 (defn get-terminals
   "returns a set of all the combinators that a gensym goes to.
@@ -23,13 +20,6 @@
     (set (concat (map #(hash-map :output %) entity#-outputs)
                  (map #(hash-map :input %) entity#-inputs)))))
 
-(defn terminal->half-wire
-  "converts the terminal structure into half of a wire vector"
-  [terminal]
-  (if (:input terminal)
-    [(:input terminal) 1]
-    [(:output terminal) 3]))
-
 (defn extract-gensyms
   "get all the unique gensyms used in a series of tacs"
   [tacs]
@@ -38,24 +28,18 @@
        (filter symbol?)
        set))
 
-(defn tacs->wires
-  "calculates wire routing between combinators specified using tac code."
+(defn group-into-networks
+  "given a list of tacs, group them into networks of terminals"
   [tacs]
   (->> tacs
        extract-gensyms
        (mapcat (fn [gensym]
                  (->> gensym
                       (get-terminals tacs)
-                      (map terminal->half-wire)
                       (partition 2 1))))
-       (map #(vec (apply concat %)))
-       distinct
-       vec))
-
-(defn group-into-networks
-  "given a list of wires, group them into sets of connected terminals"
-  [wires]
-  (graph/combine-sets (map (fn [[a1 a2 b1 b2]] #{[a1 a2] [b1 b2]}) wires)))
+       (map #(set %))
+       distinct 
+       graph/combine-sets))
 
 (defn gensyms->signals
   "given a coll of tacs replace all gensysms with appropriate
@@ -69,27 +53,26 @@
   ;
   ; then all we need to do is just replace every occurence of the gensym in
   ; the tacs with its appropriate signal replacement.
-  (let [terminal-networks (group-into-networks (distinct (tacs->wires tacs)))
+  (let [terminal-networks (group-into-networks tacs)
         gensyms (extract-gensyms tacs)
-        gensyms->half-wires (->> gensyms
-                                 (map #(vector %
-                                               (first (get-terminals tacs %))))
-                                 (into {})
-                                 (#(update-vals % terminal->half-wire)))
+        gensyms->terminals (->> gensyms
+                                (map #(vector %
+                                              (first (get-terminals tacs %))))
+                                (into {}))
         base-mapping (->> terminal-networks
                           (map #(vector % #{}))
                           (into {})
                           (#(assoc % nil #{})))
-        half-wires->network (->> terminal-networks
+        terminals->network (->> terminal-networks
                                  (mapcat (fn [network]
                                            (map #(vector % network) network)))
                                  (into {}))
         network->gensyms (reduce (fn [mapping [gensym half-wire]]
                                    (update mapping
-                                           (half-wires->network half-wire)
+                                           (terminals->network half-wire)
                                            #(conj % gensym)))
                                  base-mapping
-                                 gensyms->half-wires)
+                                 gensyms->terminals)
         gensym-groups (vals network->gensyms)
         signal-names (concat
                       (map (fn [i] {:type "virtual" :name (str "signal-" i)})
@@ -119,18 +102,6 @@
            ; its redundant, so drop it.
            (map #(if (= 5 (count %)) (drop-last %) %))))))
 
-(defn wires->combinator-graph
-  "generate a hashmap of combinator numbers to the combinators they connect to"
-  [num-tacs wires]
-  (let [wired-combinators
-        (->> wires
-             (mapcat (fn [[a _ b _]] [[a b] [b a]]))
-             (reduce (fn [m [k v]] (merge-with #(set/union %1 %2) m {k #{v}}))
-                     {}))
-        missing (remove #(wired-combinators %)
-                        (range 1 (inc num-tacs)))]
-    (apply conj wired-combinators (map #(vector % #{}) missing))))
-
 (defn one-tac->entity
   "convert a single tac into an entity. 
    !!GENSYM REPLACEMENT MUST HAVE HAPPENED FIRST!!"
@@ -156,7 +127,7 @@
     (if (tac->operation (first tac))
       {:entity_number entity-num
        :name "arithmetic-combinator"
-       :position {:x (position 0) :y (+ (* (position 1) 2) 0.5)}
+       :position {:x (position 0) :y (+ (position 1) 0.5)}
        :direction 0
        :control_behavior
        {:arithmetic_conditions
@@ -168,7 +139,7 @@
          :output_signal (tac-vec 3)}}}
       {:entity_number entity-num
        :name "decider-combinator"
-       :position {:x (position 0) :y (+ (* (position 1) 2) 0.5)}
+       :position {:x (position 0) :y (+ (position 1) 0.5)}
        :direction 0
        :control_behavior
        {:decider_conditions
@@ -188,54 +159,53 @@
                               (tac-vec 3))
                     :copy_count_from_input true}]}}})))
 
-(defn optimal-wires
-  [wires nodes->positions]
-  (let [networks (group-into-networks wires)
-        graphs (map (fn [network]
-                      (->> (for [from network to network] [from to])
-                           (remove (fn [[from to]] (= from to)))
-                           (reduce (fn [h [from to]]
-                                     (update h from (partial cons to)))
-                                   {})
-                           (#(update-vals % set))))
-                    networks)]
-    (mapcat (fn [a-graph]
-              (let [mst (graph/minimum-spanning-tree a-graph
-                                                     (fn [[[a _] [b _]]]
-                                                       (pos/distance
-                                                        (nodes->positions a)
-                                                        (nodes->positions b))))
-                    tree (graph/acyclic-graph->tree mst (ffirst mst))
-                    ; given the tree structure, we want to connect each
-                    ; node to its children we do this by concating the root
-                    ; of the current tree with the node value of each, and
-                    ; then concating the array of those with the result of
-                    ; calling this function on each child.
-                    into-wires ((fn self [tree]
-                                  (apply concat
-                                         (map #(vec (concat (first tree) (first %)))
-                                              (rest tree))
-                                         (map self (rest tree))))
-                                tree)]
-                into-wires))
-            graphs)))
+(defn power-pole->entity
+  "converts a power pole into a valid entity"
+  [entity-num position]
+  {:entity_number entity-num
+   :name "medium-electric-pole"
+   :position {:x (+ (position 0) 0.5) :y (+ (position 1) 0.5)}})
+
+(defn determine-wiring
+  "given a positions-map, determine all the wiring"
+  [positions-map]
+  (let [into-half-wire (fn [obj]
+                         [(first (vals obj))
+                          (condp #(%1 %2) obj :pole 1 :input 1 :output 3)])]
+    (->> (for [k (keys positions-map)
+               adj ((positions-map k) :adjacents)]
+           (->> [k adj]
+                (map into-half-wire)
+                sort
+                (apply concat)
+                vec))
+         distinct
+         vec)))
 
 (defn tac->fc
   "convert tac statements into fully formed blueprint struct"
   [& tac-statements]
-  (let [combinator-graph (->> tac-statements
-                              tacs->wires
-                              (wires->combinator-graph (count tac-statements)))
-        positions-map (pos/determine-positions combinator-graph)
-        entities (mapv #(one-tac->entity %1 %2 (positions-map %2))
-                       (gensyms->signals tac-statements)
-                       (range 1 (inc (count tac-statements))))
-        wires (optimal-wires (tacs->wires tac-statements) positions-map)]
+  (let [terminal-networks (group-into-networks tac-statements)
+        positioned-graph (pos/add-power-poles terminal-networks 8)
+        positions-map (-> positioned-graph
+                          (update-keys #(first (vals %)))
+                          (update-vals :position)
+                          (update-vals
+                           (fn [[x y]]
+                             (if (= x 0) [x (* 2 (quot y 2))] [x y]))))
+        combinator-entities (mapv #(one-tac->entity %1 %2 (positions-map %2))
+                                  (gensyms->signals tac-statements)
+                                  (range 1 (inc (count tac-statements))))
+        power-pole-entities (map #(power-pole->entity % (positions-map %))
+                                 (range (inc (count tac-statements))
+                                        (inc (count positions-map))))
+        wires (determine-wiring positioned-graph)]
     ; return the data in the format that factorio blueprint expects.
     ; Essentially just restructuring into a json-esque structure.
     ; the keywords will automatically be converted into strings.
     {:blueprint {:icons [{:signal {:type "virtual" :name "signal-L"} :index 1}]
-                 :entities entities
+                 :entities (vec (concat combinator-entities
+                                        power-pole-entities))
                  :wires wires
                  :item "blueprint"
                  :version 1}}))
