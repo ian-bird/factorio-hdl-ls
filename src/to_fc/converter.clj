@@ -10,11 +10,11 @@
    {:output combinator#}"
   [tacs gensym]
   (let [entity#-outputs (->> tacs
-                             (map-indexed #(vector (last %2) (inc %1)))
+                             (map-indexed #(vector (last (filter symbol? %2)) (inc %1)))
                              (filter #(= gensym (% 0)))
                              (map second))
         entity#-inputs (->> tacs
-                            (map-indexed #(vector (drop-last %2) (inc %1)))
+                            (map-indexed #(vector (drop-last (filter symbol? %2)) (inc %1)))
                             (filter (fn [tac] (some #(= gensym %) (first tac))))
                             (map second))]
     (set (concat (map #(hash-map :output %) entity#-outputs)
@@ -83,7 +83,8 @@
         ; symbol needs to be replaced with the input symbol, and its
         ; guaranteed to have no impact on the other circuits or networks.
         update-decider-outputs (reduce (fn [update-map tac]
-                                         (if (= 5 (count tac))
+                                         (if (and (= 5 (count tac))
+                                                  (symbol? (last tac)))
                                            (assoc update-map
                                                   (nth tac 4) (nth tac 3))
                                            update-map))
@@ -97,10 +98,7 @@
             (->> gensym-groups
                  (mapcat (fn [gensym-group]
                            (map #(vector %1 %2) gensym-group signal-names)))
-                 (into {})))
-           ; the piped-in symbol isn't part of the entity description, and
-           ; its redundant, so drop it.
-           (map #(if (= 5 (count %)) (drop-last %) %))))))
+                 (into {})))))))
 
 (defn one-tac->entity
   "convert a single tac into an entity. 
@@ -157,7 +155,7 @@
                                (Exception.
                                 "ERROR: consequent cannot be a number."))
                               (tac-vec 3))
-                    :copy_count_from_input true}]}}})))
+                    :copy_count_from_input (not (= (tac-vec 4) 1))}]}}})))
 
 (defn power-pole->entity
   "converts a power pole into a valid entity"
@@ -182,6 +180,7 @@
          distinct
          vec)))
 
+#dbg
 (defn tac->fc
   "convert tac statements into fully formed blueprint struct"
   [& tac-statements]
